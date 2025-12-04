@@ -21,64 +21,33 @@ namespace HttpNewsPAT
 
         private static readonly HttpClient client = new HttpClient(handler);
 
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
-            /* Cookie token = SingIn("user", "user");
-             GetContent(token);
-             //await ParseAvito();*/
-            //Console.Read();
-
-
-            Console.WriteLine("=== Авторизация ===");
-            Console.Write("Логин: ");
-            string login = Console.ReadLine();
-
-            Console.Write("Пароль: ");
-            string password = Console.ReadLine();
-
-            Cookie token = await SingInAsync(login, password);
-
-            if (token == null)
-            {
-                Console.WriteLine("Ошибка авторизации!");
-                return;
-            }
-
-            Console.WriteLine("Авторизация успешна!\n");
-            Console.WriteLine("=== Получение контента ===");
-            string content = await GetContentAsync(token);
-            ParsingHtml(content);
-            Console.WriteLine("=== Добавление новости ===");
-
-            Console.Write("URL изображения: ");
-            string img = Console.ReadLine();
-
-            Console.Write("Название новости: ");
-            string name = Console.ReadLine();
-
-            Console.Write("Описание: ");
-            string description = Console.ReadLine();
-
-            bool result = await AddNewsAsync(token, img, name, description);
-
-            Console.WriteLine(result ? "Новость добавлена!" : "Ошибка при добавлении новости!");
+            Cookie token = SingIn("user", "user");
+            GetContent(token);
+            string name = "Новость дня!";
+            string des = "В этот день (04.12.2025) ничго опять не произошло";
+            string url = "https://permaviat.ru/_res/news_gallery/881pic.jpg";
+            AddNewsAsync(token,url,name,des);
+            ParseLentaRu();
+            Console.Read();
         }
-        
+
 
         public static async Task<bool> AddNewsAsync(Cookie token, string img, string name, string description)
-         {
+        {
             if (token != null)
             {
-                handler.CookieContainer.Add(new Uri("http://news.permaviat.ru"), token);
+                handler.CookieContainer.Add(new Uri("http://localhost/"), token);
             }
 
-            string url = "http://news.permaviat.ru/add";
+            string url = "http://localhost/ajax/add.php";
 
-            var values = new Dictionary<string, string>
+            var values = new List<KeyValuePair<string, string>>
             {
-                { "img", img },
-                { "name", name },
-                { "description", description }
+                new KeyValuePair<string, string>("name",name),
+                new KeyValuePair<string, string>("description",description),
+                new KeyValuePair<string, string>("src",img)
             };
 
             var content = new FormUrlEncodedContent(values);
@@ -88,43 +57,83 @@ namespace HttpNewsPAT
             Console.WriteLine("Ответ сервера: " + reply);
 
             return response.IsSuccessStatusCode;
-         }
-
-        public static async Task<Cookie> SingInAsync(string login, string password)
+        }
+        public static Cookie SingIn(string Login, string Password)
         {
-            string url = "http://127.0.0.1/ajax/login.php";
-
+            // Формируем данные для отправки
             var values = new Dictionary<string, string>
             {
-                { "login", login },
-                { "password", password }
+                { "login", Login },
+                { "password", Password }
             };
-
             var content = new FormUrlEncodedContent(values);
 
-            HttpResponseMessage response = await client.PostAsync(url, content);
+            // Выполняем POST-запрос синхронно
+            HttpResponseMessage response = client.PostAsync("http://localhost/ajax/login.php", content)
+                .GetAwaiter().GetResult();
 
-            string responseText = await response.Content.ReadAsStringAsync();
-            Console.WriteLine("Ответ сервера при входе: " + responseText);
+            // Читаем тело ответа (для отладки)
+            string responseFromServer = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            Console.WriteLine(responseFromServer);
 
-            Uri uri = new Uri("http://127.0.0.1");
-            Cookie token = handler.CookieContainer.GetCookies(uri)["token"];
-            return token;
+            // Извлекаем cookie "token" из глобального контейнера
+            var cookies = handler.CookieContainer.GetCookies(new Uri("http://localhost/"));
+            return cookies["token"]; // может быть null — как и раньше
         }
-
-        public static async Task<string> GetContentAsync(Cookie token)
+        /*public static Cookie SingIn(string Login, string Password)
         {
-            if (token != null)
+            Cookie token = null;
+            string url = "http://localhost/ajax/login.php";
+            Debug.WriteLine($"Выполняю запрос: {url}");
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "Post";
+            request.ContentType = "application/x-www-form-urlencoded";
+            request.CookieContainer = new CookieContainer();
+            string postData = $"login={Login}&password={Password}";
+            byte[] Data = Encoding.ASCII.GetBytes(postData);
+            request.ContentLength = Data.Length;
+            using (Stream stream = request.GetRequestStream())
             {
-                handler.CookieContainer.Add(new Uri("http://127.0.0.1"), token);
+                stream.Write(Data, 0, Data.Length);
+            }
+            using (HttpWebResponse Response = (HttpWebResponse)request.GetResponse())
+            {
+                Debug.WriteLine($"Статус выполенения: {Response.StatusCode}");
+                string ResponseFromServer = new StreamReader(Response.GetResponseStream()).ReadToEnd();
+                Console.WriteLine(ResponseFromServer);
+                token = Response.Cookies["token"];
+            }
+            return token;
+        }*/
+        /*public static string GetContent(Cookie token)
+        {
+            string Content = null;
+            string url = "http://localhost/main";
+            Debug.WriteLine($"Выполняем запрос: {url}");
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.CookieContainer = new CookieContainer();
+            request.CookieContainer.Add(token);
+            using(HttpWebResponse response=(HttpWebResponse)request.GetResponse())
+            {
+                Debug.WriteLine($"Статтус выполнения: {response.StatusCode}");
+                Content=new StreamReader(response.GetResponseStream()).ReadToEnd();
+            }
+            return Content;
+        }*/
+        public static string GetContent(Cookie token)
+        {
+            // Убеждаемся, что cookie добавлены (на случай, если SingIn вернул null, но куки уже в контейнере)
+            if (token != null && !handler.CookieContainer.GetCookies(new Uri("http://localhost/")).Cast<Cookie>().Any(c => c.Name == "token"))
+            {
+                handler.CookieContainer.Add(new Uri("http://localhost/"), token);
             }
 
-            string url = "http://127.0.0.1/ajax/main.php";
-            HttpResponseMessage response = await client.GetAsync(url);
+            // Выполняем GET-запрос синхронно
+            HttpResponseMessage response = client.GetAsync("http://localhost/main")
+                .GetAwaiter().GetResult();
 
-            string responseText = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Ответ сервера:\n{responseText}");
-            return responseText;
+            Debug.WriteLine($"Статус выполнения: {response.StatusCode}");
+            return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
         }
 
         public static void ParsingHtml(string htmlCode)
@@ -141,21 +150,17 @@ namespace HttpNewsPAT
                 Console.WriteLine(name + "\n" + "Изображение: " + src + "\n" + "Описание: " + Description + "\n");
             }
         }
-
-       /* public static async Task ParseAvito()
+        public static async Task ParseLentaRu()
         {
-            string url = "https://www.avito.ru";
+            string url = "https://lenta.ru";
 
-            // скачиваем страницу
-            HttpClientHandler handler = new HttpClientHandler()
+            var handler = new HttpClientHandler()
             {
-                AllowAutoRedirect = true,
-                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
 
             string html;
-
-            using (HttpClient client = new HttpClient(handler))
+            using (var client = new HttpClient(handler))
             {
                 client.DefaultRequestHeaders.Add("User-Agent",
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36");
@@ -163,32 +168,43 @@ namespace HttpNewsPAT
                 html = await client.GetStringAsync(url);
             }
 
-            // парсим HTML
-            HtmlDocument doc = new HtmlDocument();
+            var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            var items = doc.DocumentNode.SelectNodes("//div[@itemtype='http://schema.org/Product']");
+            // Основные новости на главной — в блоках .card-mini или .item (зависит от обновления)
+            // Актуальный селектор (на 2025 г.): 
+            var newsItems = doc.DocumentNode.SelectNodes("//a[contains(@class, 'card-mini') or contains(@class, 'item')]");
 
-            if (items == null)
+            if (newsItems == null || !newsItems.Any())
             {
-                Console.WriteLine("Объявления не найдены. Возможно, Avito включил защиту.");
+                Console.WriteLine("Новости не найдены. Возможно, изменилась разметка.");
                 return;
             }
 
-            foreach (var item in items)
+            int count = 0;
+            foreach (var item in newsItems)
             {
-                string title = item.SelectSingleNode(".//h3")?.InnerText?.Trim();
-                string price = item.SelectSingleNode(".//meta[@itemprop='price']")?.GetAttributeValue("content", "—");
-                string link = item.SelectSingleNode(".//a")?.GetAttributeValue("href", "");
+                if (count >= 10) break;
 
-                if (!string.IsNullOrEmpty(link) && link.StartsWith("/"))
-                    link = "https://www.avito.ru" + link;
+                string title = item.SelectSingleNode(".//h3")?.InnerText?.Trim() ??
+                               item.SelectSingleNode(".//span")?.InnerText?.Trim() ??
+                               "Без заголовка";
 
-                Console.WriteLine($"Название: {title}");
-                Console.WriteLine($"Цена: {price} ₽");
+                string link = item.GetAttributeValue("href", "");
+                if (link.StartsWith("/"))
+                    link = "https://lenta.ru" + link;
+
+                // Опционально: получаем краткое описание (если есть)
+                string summary = item.SelectSingleNode(".//p")?.InnerText?.Trim() ?? "";
+
+                Console.WriteLine($"Заголовок: {title}");
+                if (!string.IsNullOrEmpty(summary))
+                    Console.WriteLine($"Кратко: {summary}");
                 Console.WriteLine($"Ссылка: {link}");
-                Console.WriteLine();
+                Console.WriteLine(new string('-', 60));
+
+                count++;
             }
-        }*/
+        }
     }
 }
