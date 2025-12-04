@@ -15,10 +15,76 @@ namespace HttpNewsPAT
     {
         static async Task Main(string[] args)
         {
-            Cookie token = SingIn("user", "user");
-            GetContent(token);
-           // await ParseAvito();
-            Console.Read();
+            /* Cookie token = SingIn("user", "user");
+             GetContent(token);
+             //await ParseAvito();*/
+            //Console.Read();
+
+
+            {
+                Console.WriteLine("=== Авторизация ===");
+                Console.Write("Логин: ");
+                string login = Console.ReadLine();
+
+                Console.Write("Пароль: ");
+                string password = Console.ReadLine();
+
+                Cookie token = SingIn(login, password);
+
+                if (token == null)
+                {
+                    Console.WriteLine("Ошибка авторизации!");
+                    return;
+                }
+
+                Console.WriteLine("Авторизация успешна!");
+                Console.WriteLine("======================\n");
+
+                Console.WriteLine("=== Добавление новости ===");
+
+                Console.Write("URL изображения: ");
+                string img = Console.ReadLine();
+
+                Console.Write("Название новости: ");
+                string name = Console.ReadLine();
+
+                Console.Write("Описание: ");
+                string description = Console.ReadLine();
+
+                bool result = await AddNews(token, img, name, description);
+
+                Console.WriteLine(result ? "Новость добавлена!" : "Ошибка при добавлении новости!");
+            }
+        }
+
+        public static async Task<bool> AddNews(Cookie token, string img, string name, string description)
+        {
+            var handler = new HttpClientHandler
+            {
+                CookieContainer = new CookieContainer(),
+                UseCookies = true
+            };
+
+            handler.CookieContainer.Add(new Uri("http://news.permaviat.ru"), token);
+
+            using (var client = new HttpClient(handler))
+            {
+                var values = new Dictionary<string, string>
+                {
+                    { "img", img },
+                    { "name", name },
+                    { "description", description }
+                };
+
+                var content = new FormUrlEncodedContent(values);
+
+                HttpResponseMessage response = await client.PostAsync("http://news.permaviat.ru/add", content);
+
+                string reply = await response.Content.ReadAsStringAsync();
+                Console.WriteLine("Ответ сервера: " + reply);
+
+                return response.IsSuccessStatusCode;
+            }
         }
 
         public static Cookie SingIn(string Login, string Password)
@@ -47,8 +113,6 @@ namespace HttpNewsPAT
             return token;
         }
 
-        
-
         public static void GetContent(Cookie Token)
         {
             string url = "http://127.0.0.1/ajax/main.php";
@@ -61,6 +125,7 @@ namespace HttpNewsPAT
             string responseFromServer = new StreamReader(response.GetResponseStream()).ReadToEnd();
             Console.WriteLine(responseFromServer);
         }
+
         public static void ParsingHtml(string htmlCode)
         {
             var html = new HtmlDocument();
